@@ -27,6 +27,10 @@
 ;;        c- Shell
 ;;        d- Perl
 ;;   V   Key bindings
+;;        a- Overloading key bindings
+;;        b- Keys Fxx
+;;        c- Buffer cycling
+;;        d- Keys for doxygen
 ;;
 ;; ===================================================================
 ;;
@@ -668,7 +672,14 @@
 (global-set-key [f12]        'hs-toggle-hiding)
 
 
-;; ====================   c - Keys for doxygen   =====================
+;; =====================   c - Buffer cycling   ======================
+
+;; Control + Tab         <=> Next buffer
+;; Control + Shift + Tab <=> Previous buffer
+(global-set-key [C-tab] 'next-buffer)
+(global-set-key [C-S-iso-lefttab] 'previous-buffer)
+
+;; ====================   d - Keys for doxygen   =====================
 
 ;; Hold Control + keypad number
 (global-set-key '[C-kp-0] 'doxygen-insert-function-comment)
