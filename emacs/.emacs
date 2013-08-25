@@ -679,6 +679,12 @@
 (global-set-key [C-tab] 'next-buffer)
 (global-set-key [C-S-iso-lefttab] 'previous-buffer)
 
+;; Control + x + arrow   <=> Move to the window in the direction of the arrow
+(global-set-key (kbd "C-x <up>") 'windmove-up)
+(global-set-key (kbd "C-x <down>") 'windmove-down)
+(global-set-key (kbd "C-x <right>") 'windmove-right)
+(global-set-key (kbd "C-x <left>") 'windmove-left)
+
 ;; ====================   d - Keys for doxygen   =====================
 
 ;; Hold Control + keypad number
