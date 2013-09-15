@@ -546,7 +546,7 @@
 
 ;; Make the above style the C/C++ default style
 (defun my-c-mode-common-hook ()
-  (setq indent-tabs-mode t)
+  (setq indent-tabs-mode nil)
   (c-add-style "PERSONAL" my-c-style t)
 )
 (add-hook 'c-mode-hook 'my-c-mode-common-hook)
