@@ -257,7 +257,7 @@
 (delete-selection-mode 1)
 
 ;; Select the text by holding SHIFT
-(pc-selection-mode)
+(delete-selection-mode t)
 
 ;; Highlighting the selected area
 (transient-mark-mode 1)
