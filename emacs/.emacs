@@ -76,6 +76,8 @@
 (setq custom-file "~/.emacs-custom.el")
 (load custom-file 'noerror)
 
+;; Add the path to custom plugins
+(add-to-list 'load-path "~/.emacs.d/")
 
 ;; ===================================================================
 ;; ==============   I   Appearence and interaction   =================
