@@ -190,6 +190,9 @@
 ;; and not at the cursor position
 (setq mouse-yank-at-point nil)
 
+;; Enable copy and paste from clip board (to interoperate with other apps)
+(setq x-select-enable-clipboard t)
+
 ;; Support for the mouse wheel.
 ;; Used alone, the rotation of the wheel causes a scroll of 5 lines
 ;; per movement. Combined with the Shift key, the scroll is reduced to
@@ -707,8 +710,4 @@
 
 
 ;; ========================   End of file   ==========================
-;; (setq load-path (cons "/users/teixeira/.emacs.local.d/" load-path))
-;; (require 'erin)
-;; (add-to-list 'auto-mode-alist (cons "web..*.sdesigns.com" 'erin-mode))
 
-(setq x-select-enable-clipboard t)
