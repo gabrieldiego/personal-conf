@@ -1,0 +1,43 @@
+sudo apt-get install bluez python-gobject python-dbus
+
+-> python-gobject and python-dbus are needed for the python scripts
+   bluez-simple-agent and bluez-test-device to work.
+
+-> Discover the hciX location of the dongle with:
+
+hcitool dev
+
+Devices:
+        hci0    00:11:95:00:1A:CF
+
+-> (i) Your Bluetooth device will have a different id.
+
+sudo bluez-simple-agent hci0 XX:XX:XX:XX:XX:XX
+-> XX:XX:XX:XX:XX:XX is the MAC or BT ADD or BlueTooth Address of the bt
+   device. Press the reset or pair button on your keyboard, simple-agent will
+   ask to specify a pin like 1111, then type that pin on the bt keyboard and
+   your bt keyboard is paired.
+
+sudo bluez-test-device trusted XX:XX:XX:XX:XX:XX yes
+-> To set the device as trusted
+
+sudo /etc/init.d/bluetooth restart
+-> To restart the bluetooth daemon.
+
+-> Check if the device is added:
+dmesg|tail
+-> The last lines will list your device.
+
+-> Found the method for 10.04 and 11.04 here:
+   http://www.spinics.net/lists/linux-bluetooth/msg13445.html
+
+-> Additionally, according to this thread
+   (http://www.raspberrypi.org/phpBB3/viewtopic.php?f=27&t=6838), it may be
+   necessary, after authenticating your keyboard, to run:
+
+sudo bluez-test-input connect XX:XX:XX:XX:XX:XX
+-> To actually get the Bluetooth device to connect to the computer (I had to
+   do this when using a Logitech Dinovo Edge with a generic Bluetooth adapter).
+   After this, set the device to be trusted as above, and the connection
+   should persist upon reboot.
+
