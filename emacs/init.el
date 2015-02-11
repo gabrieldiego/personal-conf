@@ -19,6 +19,8 @@
 ;;        b- Window
 ;;        c- Mouse
 ;;        d- Font colors
+;;        e- Search
+;;        f- Encoding
 ;;   II  General edition
 ;;   III External plugins configuration
 ;;   IV  Code edition
@@ -256,12 +258,17 @@
 
 ;; =========================   e- Search   ===========================
 
-;; I was meant to not erase the search while scrooling, but it does
+;; It was meant to not erase the search while scrolling, but it does
 (defun isearch-dehighlight ()
   (unless (or (eq last-command-event 'next)
               (eq last-command-event 'prior))
   (when isearch-overlay
     (delete-overlay isearch-overlay))))
+
+;; ========================   e- Encoding   ==========================
+
+;; In Windows it may mess up with encoding, so stick with UTF-8
+(prefer-coding-system 'utf-8)
 
 
 ;; ===================================================================
