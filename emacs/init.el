@@ -79,7 +79,7 @@
 (load custom-file 'noerror)
 
 ;; Add the path to custom plugins
-(add-to-list 'load-path "~/.emacs.d/lisp")
+(add-to-list 'load-path "~/.emacs.d/")
 
 ;; ===================================================================
 ;; ==============   I   Appearence and interaction   =================
@@ -152,16 +152,11 @@
 ;; Toggle to maximize window
 (defun toggle-maximize ()
   (interactive)
-  (if (eq system-type 'windows-nt)
-    (w32-send-sys-command 61488)
-
-    ( (x-send-client-message nil 0 nil "_NET_WM_STATE" 32
-                          '(2 "_NET_WM_STATE_MAXIMIZED_VERT" 0))
-      (x-send-client-message nil 0 nil "_NET_WM_STATE" 32
-                          '(2 "_NET_WM_STATE_MAXIMIZED_HORZ" 0))
-    )
+  (x-send-client-message nil 0 nil "_NET_WM_STATE" 32
+                         '(2 "_NET_WM_STATE_MAXIMIZED_VERT" 0))
+  (x-send-client-message nil 0 nil "_NET_WM_STATE" 32
+                         '(2 "_NET_WM_STATE_MAXIMIZED_HORZ" 0))
   )
-)
 
 (toggle-maximize)
 
@@ -172,16 +167,13 @@
       ;; To add a position (in pixels), type the following command :
       ;; (setq initial-frame-alist
       ;;       '((top . 1) (left . 1) (width . 100) (height . 60)))
-      ;;(setq initial-frame-alist '((width . 100) (height . 60)))
+      (setq initial-frame-alist '((width . 100) (height . 60)))
 
       ;; Font size used in X
       ;; To choose correctly your prefered font, type "xfontsel" in a shell.
-      (if (eq system-type 'windows-nt)
-          ()
-        (set-default-font "-*-fixed-bold-r-*-*-*-130-*-*-*-*-iso10646-*")
-        )
-      )
-  )
+      (set-default-font "-*-fixed-bold-r-*-*-*-130-*-*-*-*-iso10646-*")
+    )
+)
 
 ;; By default, when Emacs is launched in a terminal, it doesn't get
 ;; the terminal and keyboard configuration. So it doesn't do any
