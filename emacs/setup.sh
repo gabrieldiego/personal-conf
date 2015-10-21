@@ -1,3 +1,3 @@
 #!/bin/sh
 cp .emacs ~
-cp lisp ~/.emacs.d/
+cp -r lisp ~/.emacs.d/
