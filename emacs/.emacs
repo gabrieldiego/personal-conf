@@ -33,6 +33,7 @@
 ;;        b- Keys Fxx
 ;;        c- Buffer cycling
 ;;        d- Keys for doxygen
+;;        e- Undo
 ;;
 ;; ===================================================================
 ;;
@@ -725,6 +726,9 @@
 (global-set-key '[C-kp-0] 'doxygen-insert-function-comment)
 (global-set-key '[C-kp-5] 'doxygen-insert-file-comment)
 (global-set-key '[C-kp-8] 'doxygen-insert-comment)
+
+;; ==========================   e - Undo   ===========================
+(global-set-key [C-mouse-8] 'undo)
 
 
 ;; ========================   End of file   ==========================
