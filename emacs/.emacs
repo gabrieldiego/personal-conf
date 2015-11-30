@@ -714,10 +714,10 @@
 (global-set-key [mouse-9] 'previous-buffer)
 
 ;; Control + x + arrow   <=> Move to the window in the direction of the arrow
-(global-set-key (kbd "C-x <up>") 'windmove-up)
-(global-set-key (kbd "C-x <down>") 'windmove-down)
-(global-set-key (kbd "C-x <right>") 'windmove-right)
-(global-set-key (kbd "C-x <left>") 'windmove-left)
+(global-set-key (kbd "C-x <C-up>") 'windmove-up)
+(global-set-key (kbd "C-x <C-down>") 'windmove-down)
+(global-set-key (kbd "C-x <C-right>") 'windmove-right)
+(global-set-key (kbd "C-x <C-left>") 'windmove-left)
 
 ;; ====================   d - Keys for doxygen   =====================
 
