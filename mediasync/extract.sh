@@ -11,6 +11,7 @@
 
 list=$1
 input=$2
+prepend_track_number_title=1
 
 previous_n_seconds=0
 
@@ -57,6 +58,20 @@ do
 
   output_filename="$zi - ${list_artist[$i]}-${list_song[$i]}.mp3"
 
-  echo ffmpeg -y -i \"$input\" -metadata title=\"${list_song[$i]}\" -metadata artist=\"${list_song[$i]}\" -metadata track=$zi -ss ${list_time[$i]} -t ${list_duration[$i]} -c copy \"$output_filename\"
+  if [ -z "${list_duration[$i]}" ]
+  then
+    duration=""
+  else
+    duration="-t ${list_duration[$i]}"
+  fi
+
+  if [ "$prepend_track_number_title" == 0 ]
+  then
+    title="${list_song[$i]}"
+  else
+    title="$zi - ${list_song[$i]}"
+  fi
+
+  echo ffmpeg -y -i \"$input\" -metadata title=\"$title\" -metadata artist=\"${list_artist[$i]}\" -metadata track=$zi -ss ${list_time[$i]} -t ${list_duration[$i]} -c copy \"$output_filename\"
 done
 
