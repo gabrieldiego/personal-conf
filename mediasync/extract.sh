@@ -50,7 +50,7 @@ do
 
 done < "$list"
 
-list_time[$(( counter-1 ))]=5555
+list_time[$(( counter-1 ))]=2147483647
 
 for ((i=0;i<$counter;i++))
 do
