@@ -25,23 +25,23 @@ def getch():
 button_delay = 0.2
 
 pronoms_fc = [
-        '我',
-        '你',
-        '他',
-        '她',
-        '们',
-        '的',
+        '我', '你',
+        '他', '她',
+        '们', '的',
 ]
 
 verbs_fc = [
-        '是',
-        '有',
-        '在',
-        '要',
-        '叫',
-        '姓',
-        '不',
-        '没'
+        '是', '有',
+        '在', '去',
+        '叫', '姓',
+        '来', '要',
+        '吃', '喝',
+        '不', '没',
+]
+
+nouns_fc = [
+        '饭', '面',
+        '茶', '水',
 ]
 
 misc_fc = [
@@ -53,19 +53,21 @@ misc_fc = [
         '也',
         '很',
         '干',
-        '嘛'
 ]
 
-#        ['', '', ''],
+flashcards = pronoms_fc + verbs_fc + nouns_fc + misc_fc
 
-flashcards = pronoms_fc + verbs_fc + misc_fc
-
+def get_new_fc():
+    global lastfc
+    global fc
+    lastfc=randint(0,fclen-1)
+    fc = flashcards[lastfc]
 
 fclen = len(flashcards)
-lastfc=0
+get_new_fc()
 
 print("c to flash a chinese character, p for pinyin or e for english word")
-print("a for the answer")
+print("a for the answer, l for the link to the stroke order")
 print("Press q to quit")
 
 while True:
@@ -76,22 +78,24 @@ while True:
         exit(0)
  
     if (char == "c"):
-        lastfc=randint(0,fclen-1)
+        get_new_fc()
         print(flashcards[lastfc])
         time.sleep(button_delay)
  
     elif (char == "p"):
-        lastfc=randint(0,fclen-1)
-        print(pinyin.get(flashcards[lastfc]))
+        get_new_fc()
+        print(pinyin.get(fc))
         time.sleep(button_delay)
  
     elif (char == "e"):
-        lastfc=randint(0,fclen-1)
-        print(pinyin.cedict.translate_word(flashcards[lastfc]))
+        get_new_fc()
+        print(pinyin.cedict.translate_word(fc))
         time.sleep(button_delay)
  
     elif (char == "a"):
-        fc = flashcards[lastfc]
         print(fc + ': ' + pinyin.get(fc) + ': ' + ', '.join(pinyin.cedict.translate_word(fc)))
         time.sleep(button_delay)
+
+    elif (char == "l"):
+        print("http://www.chinesehideout.com/tools/strokeorder.php?c="+fc)
 
