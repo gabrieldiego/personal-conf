@@ -4,6 +4,11 @@
  
 import sys, termios, tty, os, time
 
+# Ex: https://pypi.org/project/pinyin/
+# wget -c https://files.pythonhosted.org/packages/32/95/d2969f1071b7bc0afff407d1d7b4b3f445e8e6b59df7921c9c09e35ee375/pinyin-0.4.0.tar.gz
+import pinyin
+import pinyin.cedict
+
 from random import randint
 
 def getch():
@@ -20,31 +25,35 @@ def getch():
 button_delay = 0.2
 
 pronoms_fc = [
-        ['我', 'wǒ', 'I'],
-        ['你', 'nǐ', 'you'],
-        ['他', 'tā', 'he'],
-        ['她', 'tā', 'she'],
-        ['们', 'men', 'pronom plural (we, you, they)'],
-        ['的', 'de','possessive (my, your)'],
+        '我',
+        '你',
+        '他',
+        '她',
+        '们',
+        '的',
 ]
 
 verbs_fc = [
-        ['是', 'shì', 'to be'],
-        ['要', 'yào', 'to want'],
-        ['叫', 'jiào', 'to be called (name)'],
-        ['有', 'yǒu', 'to have'],
-        ['没有', 'méiyǒu', 'to not have'],
+        '是',
+        '有',
+        '在',
+        '要',
+        '叫',
+        '姓',
+        '不',
+        '没'
 ]
 
 misc_fc = [
-        ['不', 'bù', 'not'],
-        ['好', 'hǎo', 'good'],
-        ['喂', 'wèi', 'hello'],
-        ['什么', 'shénme', 'what'],
-        ['~在哪', 'zài nǎ', 'where is ~'],
-        ['也', 'yě', 'also'],
-        ['很', 'hěn', 'very'],
-        ['你在干嘛', 'Nǐ zài gàn ma', 'What are you doing?'],
+        '好',
+        '喂',
+        '什',
+        '么',
+        '哪',
+        '也',
+        '很',
+        '干',
+        '嘛'
 ]
 
 #        ['', '', ''],
@@ -68,19 +77,21 @@ while True:
  
     if (char == "c"):
         lastfc=randint(0,fclen-1)
-        print(flashcards[lastfc][0])
+        print(flashcards[lastfc])
         time.sleep(button_delay)
  
     elif (char == "p"):
         lastfc=randint(0,fclen-1)
-        print(flashcards[lastfc][1])
+        print(pinyin.get(flashcards[lastfc]))
         time.sleep(button_delay)
  
     elif (char == "e"):
         lastfc=randint(0,fclen-1)
-        print(flashcards[lastfc][2])
+        print(pinyin.cedict.translate_word(flashcards[lastfc]))
         time.sleep(button_delay)
  
     elif (char == "a"):
-        print(flashcards[lastfc])
+        fc = flashcards[lastfc]
+        print(fc + ': ' + pinyin.get(fc) + ': ' + ', '.join(pinyin.cedict.translate_word(fc)))
         time.sleep(button_delay)
+
