@@ -11,51 +11,59 @@ import pinyin.cedict
 
 from random import randint
 
-def getch():
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setraw(sys.stdin.fileno())
-        ch = sys.stdin.read(1)
- 
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    return ch
+## Flashcards
 
-button_delay = 0.2
+class Flashcard:
+  def __init__(self, hanzi):
+    self.hanzi = hanzi
+    self.pinyin = pinyin.get(hanzi)
+    self.translation = ', '.join(pinyin.cedict.translate_word(hanzi))
 
-pronoms_fc = [
-    '我', '你',
-    '他', '她',
-    '们', '的',
-]
+  def description(self):
+    return self.hanzi + ": " + self.pinyin + ": " + self.translation
 
-verbs_fc = [
-    '是', '有',
-    '在', '去',
-    '叫', '姓',
-    '来', '要',
-    '吃', '喝',
-    '不', '没',
-]
+  def __str__(self):
+    return self.description()
 
-nouns_fc = [
-    '饭', '面',
-    '茶', '水',
-]
+  def __repr__(self):
+    return self.description()
+  
+  def set_pinyin(self, new_pinyin):
+    self.pinyin = new_pinyin
 
-misc_fc = [
-    '好',
-    '喂',
-    '什',
-    '么',
-    '哪',
-    '也',
-    '很',
-    '干',
-]
+  def set_translation(self, new_translation):
+    self.translation = new_translation
 
-flashcards = pronoms_fc + verbs_fc + nouns_fc + misc_fc
+  def get_hanzi(self):
+    return self.hanzi
+
+  def get_pinyin(self):
+    return self.pinyin
+
+  def get_translation(self):
+    return self.translation
+
+def load_flashcards_from_file(filename):
+  flashcards=[]
+  f=open(filename)
+
+  for l in f.read().splitlines():
+    if(len(l) > 0):
+      hanzi=l[0]
+      flashcards.append(Flashcard(hanzi))
+
+  f.close()
+
+  return flashcards
+
+def list_all_flashcards(flashcards):
+  for fc in flashcards:
+    print(fc.description())
+
+flashcards=[]
+
+for arg in sys.argv[1:]:
+  flashcards += load_flashcards_from_file(arg)
 
 def find_next_circular(l,val,cur_idx):
   rotated_l=l[cur_idx:]+l[:cur_idx]
@@ -75,18 +83,35 @@ def get_next_fc():
   if (memorization==True):
     lastfc+=1
     lastfc = find_next_circular(mistake,True,lastfc)
-    fc = flashcards[lastfc]
+    fc = flashcards[lastfc].get_hanzi()
     if (memorization==True):
       mistake[lastfc]=False
   else:
     lastfc=randint(0,fclen-1)
-    fc = flashcards[lastfc]
+    fc = flashcards[lastfc].get_hanzi()
 
 memorization=False
 
 fclen = len(flashcards)
 
 memorization=False
+
+## Main loop
+
+button_delay = 0.2
+
+def getch():
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(sys.stdin.fileno())
+        ch = sys.stdin.read(1)
+ 
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return ch
+
+list_all_flashcards(flashcards)
 
 print("c to flash a chinese character, p for pinyin or e for english word")
 print("a for the answer, l for the link to the stroke order")
@@ -102,21 +127,21 @@ while True:
  
     if (char == "c"):
         get_next_fc()
-        print(flashcards[lastfc])
+        print(flashcards[lastfc].get_hanzi())
         time.sleep(button_delay)
  
     elif (char == "p"):
         get_next_fc()
-        print(pinyin.get(fc))
+        print(flashcards[lastfc].get_pinyin())
         time.sleep(button_delay)
  
     elif (char == "e"):
         get_next_fc()
-        print(pinyin.cedict.translate_word(fc))
+        print(flashcards[lastfc].get_translation())
         time.sleep(button_delay)
  
     elif (char == "a"):
-        print(fc + ': ' + pinyin.get(fc) + ': ' + ', '.join(pinyin.cedict.translate_word(fc)))
+        print(flashcards[lastfc].description())
         time.sleep(button_delay)
 
     elif (char == "l"):
