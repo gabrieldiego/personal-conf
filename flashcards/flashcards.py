@@ -111,11 +111,11 @@ def getch():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     return ch
 
-list_all_flashcards(flashcards)
 
 print("c to flash a chinese character, p for pinyin or e for english word")
 print("a for the answer, l for the link to the stroke order")
 print("m for the memorization mode, use i to mark incorrect answers (answers are assumed correct)")
+print("f to list all flashcards on the deck")
 print("Press q to quit")
 
 while True:
@@ -145,7 +145,10 @@ while True:
         time.sleep(button_delay)
 
     elif (char == "l"):
-        print("http://www.chinesehideout.com/tools/strokeorder.php?c="+fc)
+        print("http://www.chinesehideout.com/tools/strokeorder.php?c="+flashcards[lastfc].get_hanzi())
+
+    elif (char == "f"):
+        list_all_flashcards(flashcards)
 
     elif (char == "m"):
         memorization=not memorization
