@@ -2,11 +2,11 @@
 有
 在
 去
-叫
+叫::to be called (first name)
 姓
 来
 要
-吃
-喝
+吃::to eat
+喝::to drink
 不
-没
+没::not (for some verbs like 有)

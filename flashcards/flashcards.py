@@ -48,9 +48,19 @@ def load_flashcards_from_file(filename):
   f=open(filename)
 
   for l in f.read().splitlines():
-    if(len(l) > 0):
-      hanzi=l[0]
-      flashcards.append(Flashcard(hanzi))
+    ll = len(l)
+    if(ll > 0):
+      ls = l.split(':')
+      lls = len(ls)
+      hanzi=ls[0]
+      fc=Flashcard(hanzi)
+      if(lls > 1 and len(ls[1]) > 0):
+        fc.set_pinyin(ls[1])
+
+      if(lls > 2 and len(ls[2]) > 0):
+        fc.set_translation(ls[2])
+
+      flashcards.append(fc)
 
   f.close()
 
