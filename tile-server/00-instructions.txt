@@ -1,0 +1,9 @@
+The instructions for this process can be found at the following link:
+https://switch2osm.org/serving-tiles/manually-building-a-tile-server-18-04-lts/
+
+Some of the commands will need to be fixed in order to work in other distributions like Debian or Ubuntu 20.04
+
+In case the link goes out of order, please use the instructions in the file Instructions.pdf
+
+Refer also to TileSweep as it is also a very useful tool at:
+https://github.com/seemk/TileSweep
