@@ -45,7 +45,7 @@ if &term =~ "xterm-debian" || &term =~ "xterm-xfree86"
 endif
 
 
-source /utils/unix_share/vim/runtime.vim
+" source /utils/unix_share/vim/runtime.vim
 set runtimepath-=~/.vim/after
 set runtimepath+=~/.vim/after
 
