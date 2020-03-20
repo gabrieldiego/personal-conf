@@ -1,6 +1,17 @@
+#!/usr/bin/python2
 import sys
 import os
 import re
+import ConfigParser
+
+# Usage: ./sync.py <input folder> <output folder>
+# Will look into <input folder>/.sync config file to get options list
+
+def append_slash(path):
+    if path[-1:] != '/':
+        return path + '/'
+    else:
+        return path
 
 def walk_subdirs(dir):
 	sub_dirs = os.walk(dir).next()[1]
@@ -54,6 +65,7 @@ def convert_all_songs(dir, target):
 	if target[-1:] != '/':
 		target = target + '/'
 
+        print dir
 	sub_dirs = os.walk(dir).next()
 
 	if tree_empty_of_songs(dir) == 0:
@@ -98,19 +110,21 @@ def convert_all_songs(dir, target):
 			print "# File " + song + " not recognized as a song in the dir " + dir
 #		print dir+subdir+'/'
 
+input_folder = sys.argv[1]
 
-# open the input file with the list of input directories
-input_file = open(sys.argv[1],'r')
+Config = ConfigParser.ConfigParser()
+
+Config.read(append_slash(input_folder) + ".sync")
+
+dir_list = Config.get("sync","folders").split(os.linesep)
 
 target = sys.argv[2]
 
-if target[-1:] != '/':
-        target = target + '/'
+target = append_slash(target)
 
-for dir in input_file:
-	dir = dir[:-1] # Remove last \n
-	if len(dir) > 0: # Ignore empty lines (no comments accepted here)
-		convert_all_songs(dir,target+dir)
+for dir in dir_list:
+    if len(dir) > 0: # Ignore empty lines (no comments accepted here)
+        convert_all_songs(input_folder + dir,input_folder + target + dir)
 
 #ls --group-directories-first ../ > dir
 
