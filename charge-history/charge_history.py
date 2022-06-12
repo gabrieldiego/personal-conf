@@ -23,6 +23,7 @@ line_list.pop(0)
 for entry in line_list:
 	date_str = entry[1][:10]
 
+	# Get the cost
 	i=0
 	for s in entry:
 		if(re.match(".*\$.*", s)):
@@ -34,8 +35,6 @@ for entry in line_list:
 
 	cost_energy_str = entry[i]
 
-#	print date_str, cost_energy_str
-
 	date = datetime.strptime(date_str,'%m/%d/%Y')
 
 	date_f = date.strftime('%Y-%m-%d')
@@ -43,13 +42,30 @@ for entry in line_list:
 	cost_str = cost_energy_str.split(' ')[0][1:]
 	energy_str = cost_energy_str.split(' ')[1][1:]
 
-#	print cost_str
-#	print energy_str
-
 	row_list.append([date_f, energy_str, cost_str])
 
-#	print date_f, "\t\t", energy_str, "\t", cost_str
 
+#ElectrifyAmerica loop
+line_list = []
+
+with open("electrifyamerica.txt") as file:
+	for line in file:
+		if(not re.match("Date.*", line)):
+			line_list.append(line.split('","'))
+
+for entry in line_list:
+
+	date_str = entry[0].split(" ")[0][1:]
+
+	cost_str = entry[5][1:]
+
+	date = datetime.strptime(date_str,'%Y-%m-%d')
+
+	date_f = date.strftime('%Y-%m-%d')
+
+	energy_str = entry[11].split(" ")[0]
+
+	row_list.append([date_f, energy_str, cost_str])
 
 
 def sort_key(e):
@@ -57,6 +73,7 @@ def sort_key(e):
 
 row_list.sort(key=sort_key)
 
+# Coallesce all entries of same day
 i=0
 while(i<len(row_list)):
 	if(i>=1 and row_list[i][0] == row_list[i-1][0]):
