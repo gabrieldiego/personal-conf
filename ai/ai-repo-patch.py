@@ -153,6 +153,57 @@ def build_prompt(project_root: Path, instruction: str, file_blocks: list[tuple[s
     return "\n".join(sections)
 
 
+def strip_code_fences(text: str) -> str:
+    text = text.strip()
+
+    if text.startswith("```"):
+        lines = text.splitlines()
+
+        # Remove first fence line, e.g. ``` or ```json
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+
+        # Remove final fence line if present
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+
+        text = "\n".join(lines).strip()
+
+    return text
+
+
+def extract_first_json_object(text: str) -> str:
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("No JSON object found in model response")
+
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i in range(start, len(text)):
+        ch = text[i]
+
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+
+    raise ValueError("Could not find complete JSON object in model response")
+
+
 def call_model(prompt: str) -> dict[str, Any]:
     response = requests.post(
         OLLAMA_URL,
@@ -164,14 +215,29 @@ def call_model(prompt: str) -> dict[str, Any]:
         timeout=900,
     )
     response.raise_for_status()
+
     payload = response.json()
     text = payload["response"].strip()
 
+    # 1. Try raw
     try:
         return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. Try after stripping markdown fences
+    stripped = strip_code_fences(text)
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Try extracting first JSON object
+    extracted = extract_first_json_object(stripped)
+    try:
+        return json.loads(extracted)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Model did not return valid JSON.\n\n{text}") from exc
-
 
 def apply_patch(root: Path, patch: dict[str, str], dry_run: bool) -> bool:
     rel_path = patch["path"]
