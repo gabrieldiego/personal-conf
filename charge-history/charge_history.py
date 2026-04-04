@@ -68,6 +68,24 @@ for entry in line_list:
 	row_list.append([date_f, energy_str, cost_str])
 
 
+#ChargePoint loop
+
+#For Chargepoint input, open link https://mail.google.com/mail/u/0/h/ then search "from:notifications@chargepoint.com kWh Total" and copy the results into a text file. Adjust year if needed
+
+line_list = []
+
+line_number = 0
+
+with open("chargepoint.txt") as file:
+	for line in file:
+		if(re.match("Inbox.*", line)):
+			line_list.append([line])
+			line_number += 1
+		elif(line_number >= 1):
+			line_list[line_number-1].append(line)
+
+#Needs to be done
+
 def sort_key(e):
 	return e[0]
 
