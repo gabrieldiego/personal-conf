@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import itertools
 import os
 import shlex
 import sys
@@ -16,13 +17,24 @@ def fmt_ts(ts: float) -> str:
     return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def rel_union(root_a: Path, root_b: Path):
+def walk_limited(root: Path, max_depth=None):
+    for dirpath, dirnames, filenames in os.walk(root):
+        base = Path(dirpath)
+        rel_dir = base.relative_to(root)
+        depth = len(rel_dir.parts)
+
+        if max_depth is not None and depth >= max_depth:
+            dirnames[:] = []
+
+        yield base, dirnames, filenames
+
+
+def rel_union(root_a: Path, root_b: Path, max_depth=None):
     paths = set()
 
     for root in (root_a, root_b):
-        for dirpath, dirnames, filenames in os.walk(root):
-            base = Path(dirpath)
-            for name in dirnames + filenames:
+        for base, dirnames, filenames in walk_limited(root, max_depth=max_depth):
+            for name in itertools.chain(dirnames, filenames):
                 full = base / name
                 rel = full.relative_to(root)
                 paths.add(rel)
@@ -61,10 +73,24 @@ def main():
         default=2.0,
         help="Allowed modification-time difference in seconds (default: 2.0)",
     )
+    parser.add_argument(
+        "--max-depth",
+        type=int,
+        default=None,
+        help=(
+            "Maximum folder depth to search. "
+            "0 means only the root folder contents, 1 means one level deeper, "
+            "default is unlimited."
+        ),
+    )
     args = parser.parse_args()
 
     root_a = Path(args.folder_a).resolve()
     root_b = Path(args.folder_b).resolve()
+
+    if args.max_depth is not None and args.max_depth < 0:
+        print("--max-depth must be >= 0", file=sys.stderr)
+        sys.exit(1)
 
     if not root_a.is_dir():
         print(f"Error: not a directory: {root_a}", file=sys.stderr)
@@ -75,7 +101,7 @@ def main():
 
     issues = 0
 
-    for rel in rel_union(root_a, root_b):
+    for rel in rel_union(root_a, root_b, max_depth=args.max_depth):
         a = root_a / rel
         b = root_b / rel
 
