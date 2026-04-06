@@ -5,7 +5,7 @@ import itertools
 import os
 import shlex
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from datetime import datetime
 
 
@@ -29,16 +29,136 @@ def walk_limited(root: Path, max_depth=None):
         yield base, dirnames, filenames
 
 
-def rel_union(root_a: Path, root_b: Path, max_depth=None):
+def load_gitignore_rules(path: Path, base_rel: Path):
+    rules = []
+
+    if not path.is_file():
+        return rules
+
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+
+        if not line:
+            continue
+
+        if line.startswith("\\#") or line.startswith("\\!"):
+            line = line[1:]
+        elif line.startswith("#"):
+            continue
+
+        negated = line.startswith("!")
+        if negated:
+            line = line[1:]
+
+        if not line:
+            continue
+
+        directory_only = line.endswith("/")
+        if directory_only:
+            line = line.rstrip("/")
+
+        anchored = line.startswith("/")
+        if anchored:
+            line = line.lstrip("/")
+
+        has_slash = "/" in line
+
+        rules.append(
+            {
+                "base_rel": base_rel,
+                "pattern": line,
+                "negated": negated,
+                "directory_only": directory_only,
+                "anchored": anchored,
+                "has_slash": has_slash,
+            }
+        )
+
+    return rules
+
+
+def match_gitignore_rule(rel: Path, is_dir: bool, rule) -> bool:
+    base_rel = rule["base_rel"]
+
+    try:
+        rel_from_base = rel.relative_to(base_rel) if base_rel != Path(".") else rel
+    except ValueError:
+        return False
+
+    rel_posix = rel_from_base.as_posix()
+    rel_path = PurePosixPath(rel_posix)
+    pattern = rule["pattern"]
+
+    if rule["anchored"] or rule["has_slash"]:
+        if rel_posix == pattern or rel_posix.startswith(pattern + "/"):
+            return True
+        return rel_path.match(pattern)
+
+    if rule["directory_only"]:
+        parts_to_check = rel_from_base.parts if is_dir else rel_from_base.parts[:-1]
+        return any(PurePosixPath(part).match(pattern) for part in parts_to_check)
+
+    return any(PurePosixPath(part).match(pattern) for part in rel_from_base.parts)
+
+
+def is_ignored(rel: Path, is_dir: bool, rules) -> bool:
+    ignored = False
+
+    for rule in rules:
+        if match_gitignore_rule(rel, is_dir, rule):
+            ignored = not rule["negated"]
+
+    return ignored
+
+
+def visible_paths(root: Path, max_depth=None, use_gitignore=True):
     paths = set()
+    rules_by_dir = {}
 
-    for root in (root_a, root_b):
-        for base, dirnames, filenames in walk_limited(root, max_depth=max_depth):
-            for name in itertools.chain(dirnames, filenames):
-                full = base / name
-                rel = full.relative_to(root)
-                paths.add(rel)
+    for dirpath, dirnames, filenames in os.walk(root):
+        base = Path(dirpath)
+        rel_dir = base.relative_to(root)
+        depth = len(rel_dir.parts)
 
+        current_rules = []
+
+        if use_gitignore:
+            if rel_dir != Path("."):
+                current_rules = list(rules_by_dir.get(rel_dir.parent, []))
+
+            current_rules.extend(load_gitignore_rules(base / ".gitignore", rel_dir))
+            rules_by_dir[rel_dir] = current_rules
+
+        if max_depth is not None and depth >= max_depth:
+            dirnames[:] = []
+
+        kept_dirnames = []
+
+        for name in dirnames:
+            rel = rel_dir / name if rel_dir != Path(".") else Path(name)
+
+            if use_gitignore and is_ignored(rel, True, current_rules):
+                continue
+
+            kept_dirnames.append(name)
+            paths.add(rel)
+
+        dirnames[:] = kept_dirnames
+
+        for name in filenames:
+            rel = rel_dir / name if rel_dir != Path(".") else Path(name)
+
+            if use_gitignore and is_ignored(rel, False, current_rules):
+                continue
+
+            paths.add(rel)
+
+    return paths
+
+
+def rel_union(root_a: Path, root_b: Path, max_depth=None, use_gitignore=True):
+    paths = visible_paths(root_a, max_depth=max_depth, use_gitignore=use_gitignore)
+    paths |= visible_paths(root_b, max_depth=max_depth, use_gitignore=use_gitignore)
     return sorted(paths, key=lambda p: str(p))
 
 
@@ -83,6 +203,14 @@ def main():
             "default is unlimited."
         ),
     )
+    parser.add_argument(
+        "--no-gitignore",
+        action="store_true",
+        help=(
+            "Disable automatic reading of .gitignore files from each compared "
+            "folder and its subdirectories."
+        ),
+    )
     args = parser.parse_args()
 
     root_a = Path(args.folder_a).resolve()
@@ -101,7 +229,12 @@ def main():
 
     issues = 0
 
-    for rel in rel_union(root_a, root_b, max_depth=args.max_depth):
+    for rel in rel_union(
+        root_a,
+        root_b,
+        max_depth=args.max_depth,
+        use_gitignore=not args.no_gitignore,
+    ):
         a = root_a / rel
         b = root_b / rel
 
