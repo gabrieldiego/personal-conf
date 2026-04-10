@@ -23,6 +23,21 @@ print(json.dumps(sys.argv[1]))
 PY
 }
 
+model_to_alias() {
+  local model base
+  model="${1:-coder}"
+  base="${model%%:*}"
+  base="$(tr '[:upper:]' '[:lower:]' <<<"$base" | sed 's/[^a-z0-9]\+/-/g; s/^-//; s/-$//')"
+  printf '%s-agent\n' "${base:-coder}"
+}
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/deploy-coder-server.sh" ]]; then
+  DEPLOY_SCRIPT="$SCRIPT_DIR/deploy-coder-server.sh"
+else
+  DEPLOY_SCRIPT="./deploy-coder-server.sh"
+fi
+
 # System basics
 OS_NAME="$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}" || uname -s)"
 ARCH="$(uname -m)"
@@ -36,8 +51,8 @@ ROOT_FSTYPE="$(df -PT / | awk 'NR==2 {print $2}')"
 ROOT_FREE_BYTES="$(df -B1 / | awk 'NR==2 {print $4}')"
 ROOT_FREE_GB="$(python3 - <<'PY2' "$ROOT_FREE_BYTES"
 import sys
-b=int(sys.argv[1])
-print((b + (1<<30) - 1) // (1<<30))
+b = int(sys.argv[1]) if sys.argv[1] else 0
+print((b + (1 << 30) - 1) // (1 << 30))
 PY2
 )"
 ROOT_USE_PCT="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5+0}')"
@@ -55,8 +70,8 @@ mkdir -p "$MODEL_PARENT" 2>/dev/null || true
 MODEL_FREE_BYTES="$(df -B1 "$MODEL_PARENT" 2>/dev/null | awk 'NR==2 {print $4}')"
 MODEL_FREE_GB="$(python3 - <<'PY2' "$MODEL_FREE_BYTES"
 import sys
-b=int(sys.argv[1])
-print((b + (1<<30) - 1) // (1<<30))
+b = int(sys.argv[1]) if sys.argv[1] else 0
+print((b + (1 << 30) - 1) // (1 << 30))
 PY2
 )"
 MODEL_FS="$(df -PT "$MODEL_PARENT" 2>/dev/null | awk 'NR==2 {print $1}')"
@@ -165,8 +180,6 @@ elif (( (GPU_DRIVER_OK == 1 && TOTAL_VRAM_GB >= 12 && RAM_GB >= 64) || RAM_GB >=
   RECOMMENDED_MODEL="qwen3-coder:30b"
   if (( GPU_DRIVER_OK == 1 && TOTAL_VRAM_GB >= 24 )); then
     RECOMMENDED_CONTEXT=32768
-  elif (( RAM_GB >= 96 )); then
-    RECOMMENDED_CONTEXT=16384
   else
     RECOMMENDED_CONTEXT=16384
   fi
@@ -210,6 +223,14 @@ if (( MODEL_FREE_GB < MIN_DISK_GB )); then
   add_warning "Recommended model likely needs more free storage than currently available in the model directory. Need roughly ${MIN_DISK_GB}GB free at $MODEL_PARENT."
 fi
 
+RECOMMENDED_AGENT_MODEL_NAME="$(model_to_alias "$RECOMMENDED_MODEL")"
+printf -v DEPLOY_COMMAND \
+  'AGENT_MODEL_NAME=%q OLLAMA_NUM_CTX=%q %q %q' \
+  "$RECOMMENDED_AGENT_MODEL_NAME" \
+  "$RECOMMENDED_CONTEXT" \
+  "$DEPLOY_SCRIPT" \
+  "$RECOMMENDED_MODEL"
+
 if (( JSON == 1 )); then
   printf '{\n'
   printf '  "os": %s,\n' "$(json_escape "$OS_NAME")"
@@ -230,6 +251,9 @@ if (( JSON == 1 )); then
   printf '  "recommended_model": %s,\n' "$(json_escape "$RECOMMENDED_MODEL")"
   printf '  "recommended_context": %s,\n' "$RECOMMENDED_CONTEXT"
   printf '  "fallback_model": %s,\n' "$(json_escape "$FALLBACK_MODEL")"
+  printf '  "recommended_agent_model_name": %s,\n' "$(json_escape "$RECOMMENDED_AGENT_MODEL_NAME")"
+  printf '  "deploy_script": %s,\n' "$(json_escape "$DEPLOY_SCRIPT")"
+  printf '  "deploy_command": %s,\n' "$(json_escape "$DEPLOY_COMMAND")"
   printf '  "notes": %s,\n' "$(json_escape "$RECOMMENDED_NOTES")"
   printf '  "warnings": ['
   for i in "${!WARNINGS[@]}"; do
@@ -269,6 +293,7 @@ printf '\n=== Recommendation ===\n'
 printf 'Recommended model:  %s\n' "$RECOMMENDED_MODEL"
 printf 'Fallback model:     %s\n' "${FALLBACK_MODEL:-none}"
 printf 'Context to try:     %s\n' "$RECOMMENDED_CONTEXT"
+printf 'Agent alias:        %s\n' "$RECOMMENDED_AGENT_MODEL_NAME"
 printf 'Why:                %s\n' "$RECOMMENDED_NOTES"
 
 printf '\nSuggested commands:\n'
@@ -277,6 +302,9 @@ printf '  OLLAMA_CONTEXT_LENGTH=%s ollama run %s\n' "$RECOMMENDED_CONTEXT" "$REC
 if [[ -n "$FALLBACK_MODEL" ]]; then
   printf '  ollama pull %s\n' "$FALLBACK_MODEL"
 fi
+
+printf '\nSuggested deploy command:\n'
+printf '  %s\n' "$DEPLOY_COMMAND"
 
 if (( ${#WARNINGS[@]} > 0 )); then
   printf '\n=== Warnings ===\n'
