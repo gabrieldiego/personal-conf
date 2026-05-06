@@ -2,9 +2,10 @@
 set -Eeuo pipefail
 
 # Required:
-#   DOMAIN=nc.example.com sudo ./install-nextcloud.sh
+#   sudo ./install-nextcloud.sh
 #
 # Optional:
+#   DOMAIN=nc.example.com   # defaults to this machine's primary IPv4 address
 #   EMAIL=you@example.com
 #   INSTALL_DIR=/opt/nextcloud
 #   ADMIN_USER=admin
@@ -30,16 +31,44 @@ FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
 OVERWRITECLIURL="${OVERWRITECLIURL:-}"
 CADDY_SITE_ADDRESS="${CADDY_SITE_ADDRESS:-}"
 
+detect_primary_ipv4() {
+  local detected_ip=""
+
+  if command -v ip >/dev/null 2>&1; then
+    detected_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{
+      for (i = 1; i <= NF; i++) {
+        if ($i == "src") {
+          print $(i + 1)
+          exit
+        }
+      }
+    }')"
+  fi
+
+  if [[ -z "$detected_ip" ]] && command -v hostname >/dev/null 2>&1; then
+    detected_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+
+  printf '%s' "$detected_ip"
+}
+
 if [[ $EUID -ne 0 ]]; then
-  echo "Run as root: sudo DOMAIN=nc.example.com LOCAL_HTTP=1 $0" >&2
+  echo "Run as root: sudo LOCAL_HTTP=1 $0" >&2
   exit 1
 fi
 
 if [[ -z "$DOMAIN" ]]; then
-  echo "Missing DOMAIN. Example:" >&2
+  DOMAIN="$(detect_primary_ipv4)"
+fi
+
+if [[ -z "$DOMAIN" ]]; then
+  echo "Could not auto-detect this machine's primary IPv4 address." >&2
+  echo "Set DOMAIN manually. Example:" >&2
   echo "  sudo DOMAIN=nc.example.com LOCAL_HTTP=1 EMAIL=you@example.com $0" >&2
   exit 1
 fi
+
+echo "Using DOMAIN=${DOMAIN}"
 
 random_secret() {
   openssl rand -base64 36 | tr -d '\n'
