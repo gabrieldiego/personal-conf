@@ -5,7 +5,7 @@ set -Eeuo pipefail
 #   sudo ./install-nextcloud.sh
 #
 # Optional:
-#   DOMAIN=nc.example.com   # defaults to this machine's primary IPv4 address
+#   DOMAIN=nc.example.com   # local address/name for this machine; defaults to primary IPv4
 #   EMAIL=you@example.com
 #   INSTALL_DIR=/opt/nextcloud
 #   ADMIN_USER=admin
@@ -13,6 +13,19 @@ set -Eeuo pipefail
 #   PHP_MEMORY_LIMIT=512M
 #   PHP_UPLOAD_LIMIT=10G
 #   DEFAULT_PHONE_REGION=US
+#
+# Reverse proxy / tunnel mode, such as:
+#   public HTTPS: https://nc.gt8projects.com
+#   local HTTP:   http://192.168.50.55
+#
+# Example:
+#   sudo DOMAIN=192.168.50.55 LOCAL_HTTP=1 \
+#     PUBLIC_DOMAIN=nc.gt8projects.com PUBLIC_PROTOCOL=https \
+#     TRUSTED_PROXIES_EXTRA="127.0.0.1 192.168.50.55 144.202.29.4" \
+#     ./install-nextcloud.sh
+#
+# In this mode, DOMAIN is the local listener name/IP, while PUBLIC_DOMAIN is
+# the canonical URL Nextcloud should generate for browsers and DAV clients.
 
 DOMAIN="${DOMAIN:-}"
 EMAIL="${EMAIL:-admin@example.com}"
@@ -26,10 +39,17 @@ PHP_UPLOAD_LIMIT="${PHP_UPLOAD_LIMIT:-10G}"
 APACHE_BODY_LIMIT="${APACHE_BODY_LIMIT:-0}"
 DEFAULT_PHONE_REGION="${DEFAULT_PHONE_REGION:-US}"
 LOCAL_HTTP="${LOCAL_HTTP:-0}"
-OVERWRITEPROTOCOL="${OVERWRITEPROTOCOL:-https}"
+PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
+PUBLIC_PROTOCOL="${PUBLIC_PROTOCOL:-https}"
+PUBLIC_URL="${PUBLIC_URL:-}"
+OVERWRITEHOST="${OVERWRITEHOST:-}"
+OVERWRITEPROTOCOL="${OVERWRITEPROTOCOL:-}"
 FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
 OVERWRITECLIURL="${OVERWRITECLIURL:-}"
 CADDY_SITE_ADDRESS="${CADDY_SITE_ADDRESS:-}"
+NEXTCLOUD_TRUSTED_DOMAINS="${NEXTCLOUD_TRUSTED_DOMAINS:-}"
+TRUSTED_PROXIES="${TRUSTED_PROXIES:-}"
+TRUSTED_PROXIES_EXTRA="${TRUSTED_PROXIES_EXTRA:-}"
 
 detect_primary_ipv4() {
   local detected_ip=""
@@ -50,6 +70,27 @@ detect_primary_ipv4() {
   fi
 
   printf '%s' "$detected_ip"
+}
+
+url_scheme() {
+  printf '%s\n' "$1" | sed -nE 's|^([A-Za-z][A-Za-z0-9+.-]*)://.*|\1|p'
+}
+
+url_host() {
+  printf '%s\n' "$1" | sed -nE 's|^[A-Za-z][A-Za-z0-9+.-]*://([^/]+).*|\1|p'
+}
+
+append_unique_words() {
+  local result="$1"
+  shift
+  local word
+  for word in "$@"; do
+    [[ -z "$word" ]] && continue
+    if ! printf ' %s ' "$result" | grep -Fq " $word "; then
+      result="${result:+$result }$word"
+    fi
+  done
+  printf '%s' "$result"
 }
 
 if [[ $EUID -ne 0 ]]; then
@@ -139,15 +180,38 @@ if [[ -e "$INSTALL_DIR/compose.yaml" || -e "$INSTALL_DIR/.env" || -d "$INSTALL_D
   fi
 fi
 
+if [[ -n "$PUBLIC_URL" ]]; then
+  parsed_public_protocol="$(url_scheme "$PUBLIC_URL")"
+  parsed_public_domain="$(url_host "$PUBLIC_URL")"
+  PUBLIC_PROTOCOL="${parsed_public_protocol:-$PUBLIC_PROTOCOL}"
+  PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-$parsed_public_domain}"
+fi
+
 if [[ "$LOCAL_HTTP" == "1" ]]; then
-  OVERWRITEPROTOCOL="http"
-  OVERWRITECLIURL="${OVERWRITECLIURL:-http://${DOMAIN}}"
   CADDY_SITE_ADDRESS="${CADDY_SITE_ADDRESS:-:80}"
 else
-  OVERWRITEPROTOCOL="https"
-  OVERWRITECLIURL="${OVERWRITECLIURL:-https://${DOMAIN}}"
   CADDY_SITE_ADDRESS="${CADDY_SITE_ADDRESS:-${DOMAIN}}"
 fi
+
+if [[ -n "$PUBLIC_DOMAIN" ]]; then
+  OVERWRITEHOST="${OVERWRITEHOST:-$PUBLIC_DOMAIN}"
+  OVERWRITEPROTOCOL="${OVERWRITEPROTOCOL:-$PUBLIC_PROTOCOL}"
+  OVERWRITECLIURL="${OVERWRITECLIURL:-${PUBLIC_URL:-${OVERWRITEPROTOCOL}://${OVERWRITEHOST}}}"
+else
+  OVERWRITEHOST="${OVERWRITEHOST:-$DOMAIN}"
+  if [[ "$LOCAL_HTTP" == "1" ]]; then
+    OVERWRITEPROTOCOL="${OVERWRITEPROTOCOL:-http}"
+  else
+    OVERWRITEPROTOCOL="${OVERWRITEPROTOCOL:-https}"
+  fi
+  OVERWRITECLIURL="${OVERWRITECLIURL:-${OVERWRITEPROTOCOL}://${OVERWRITEHOST}}"
+fi
+
+NEXTCLOUD_TRUSTED_DOMAINS="${NEXTCLOUD_TRUSTED_DOMAINS:-$DOMAIN}"
+NEXTCLOUD_TRUSTED_DOMAINS="$(append_unique_words "$NEXTCLOUD_TRUSTED_DOMAINS" "$OVERWRITEHOST" "$PUBLIC_DOMAIN")"
+
+TRUSTED_PROXIES="${TRUSTED_PROXIES:-caddy}"
+TRUSTED_PROXIES="$(append_unique_words "$TRUSTED_PROXIES" $TRUSTED_PROXIES_EXTRA)"
 
 mkdir -p "$INSTALL_DIR"/{db,redis,html,custom_apps,config,data,themes,caddy/data,caddy/config}
 cd "$INSTALL_DIR"
@@ -163,13 +227,21 @@ MYSQL_PASSWORD=${MYSQL_PASSWORD}
 
 NEXTCLOUD_ADMIN_USER=${ADMIN_USER}
 NEXTCLOUD_ADMIN_PASSWORD=${ADMIN_PASSWORD}
-NEXTCLOUD_TRUSTED_DOMAINS=${DOMAIN}
+LOCAL_HTTP=${LOCAL_HTTP}
+PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+PUBLIC_PROTOCOL=${PUBLIC_PROTOCOL}
+PUBLIC_URL=${PUBLIC_URL}
+
+NEXTCLOUD_TRUSTED_DOMAINS=${NEXTCLOUD_TRUSTED_DOMAINS}
+TRUSTED_PROXIES=${TRUSTED_PROXIES}
 
 PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT}
 PHP_UPLOAD_LIMIT=${PHP_UPLOAD_LIMIT}
 APACHE_BODY_LIMIT=${APACHE_BODY_LIMIT}
+OVERWRITEHOST=${OVERWRITEHOST}
 OVERWRITEPROTOCOL=${OVERWRITEPROTOCOL}
 OVERWRITECLIURL=${OVERWRITECLIURL}
+CADDY_SITE_ADDRESS=${CADDY_SITE_ADDRESS}
 EOF
 
 chmod 600 .env
@@ -248,10 +320,10 @@ services:
 
       REDIS_HOST: redis
 
-      OVERWRITEHOST: ${DOMAIN}
+      OVERWRITEHOST: ${OVERWRITEHOST}
       OVERWRITEPROTOCOL: ${OVERWRITEPROTOCOL}
       OVERWRITECLIURL: ${OVERWRITECLIURL}
-      TRUSTED_PROXIES: caddy
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES}
 
       PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT}
       PHP_UPLOAD_LIMIT: ${PHP_UPLOAD_LIMIT}
@@ -348,7 +420,8 @@ docker compose exec -T -u www-data app php occ config:system:set default_phone_r
 docker compose exec -T -u www-data app php occ maintenance:update:htaccess || true
 
 cat >/root/nextcloud-credentials.txt <<EOF
-Nextcloud URL: ${OVERWRITEPROTOCOL}://${DOMAIN}
+Nextcloud URL: ${OVERWRITECLIURL}
+Local HTTP URL: http://${DOMAIN}
 Install dir: ${INSTALL_DIR}
 
 Admin user: ${ADMIN_USER}
@@ -364,6 +437,7 @@ chmod 600 /root/nextcloud-credentials.txt
 echo
 echo "Nextcloud is installed."
 echo "URL: ${OVERWRITECLIURL}"
+echo "Local address: http://${DOMAIN}"
 echo "Admin user: ${ADMIN_USER}"
 echo "Credentials saved at: /root/nextcloud-credentials.txt"
 echo

@@ -5,22 +5,34 @@ set -Eeuo pipefail
 # Docker Compose Nextcloud deployment.
 #
 # This overwrites the restored deployment's data/config/apps/database, but it
-# preserves the fresh target machine's DOMAIN / overwrite protocol / overwrite URL.
-# That means a backup made from HTTPS can be restored into HTTP, and vice versa.
+# preserves the fresh target machine's local DOMAIN plus the public canonical
+# Nextcloud URL. This supports a local HTTP server behind a public HTTPS reverse
+# proxy / SSH tunnel, e.g. local http://192.168.50.55 and public
+# https://nc.gt8projects.com.
 #
 # Usage:
 #   sudo ./restore-nextcloud-backup.sh /path/to/nextcloud-backup.tar.gz
 #
 # Optional target overrides:
-#   sudo DOMAIN=192.168.50.55 OVERWRITEPROTOCOL=http ./restore-nextcloud-backup.sh backup.tar.gz
-#   sudo DOMAIN=nc.example.com OVERWRITEPROTOCOL=https ./restore-nextcloud-backup.sh backup.tar.gz
+#   sudo DOMAIN=192.168.50.55 LOCAL_HTTP=1 ./restore-nextcloud-backup.sh backup.tar.gz
+#   sudo DOMAIN=192.168.50.55 LOCAL_HTTP=1 PUBLIC_DOMAIN=nc.example.com ./restore-nextcloud-backup.sh backup.tar.gz
+#   sudo PUBLIC_URL=https://nc.example.com ./restore-nextcloud-backup.sh backup.tar.gz
 #   sudo OVERWRITECLIURL=https://nc.example.com ./restore-nextcloud-backup.sh backup.tar.gz
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/nextcloud}"
 BACKUP_FILE="${1:-}"
 REQUESTED_DOMAIN="${DOMAIN:-}"
+REQUESTED_LOCAL_HTTP="${LOCAL_HTTP:-}"
+REQUESTED_PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
+REQUESTED_PUBLIC_PROTOCOL="${PUBLIC_PROTOCOL:-}"
+REQUESTED_PUBLIC_URL="${PUBLIC_URL:-}"
+REQUESTED_OVERWRITEHOST="${OVERWRITEHOST:-}"
 REQUESTED_PROTOCOL="${OVERWRITEPROTOCOL:-}"
 REQUESTED_CLI_URL="${OVERWRITECLIURL:-}"
+REQUESTED_TRUSTED_DOMAINS="${NEXTCLOUD_TRUSTED_DOMAINS:-}"
+REQUESTED_TRUSTED_PROXIES="${TRUSTED_PROXIES:-}"
+REQUESTED_TRUSTED_PROXIES_EXTRA="${TRUSTED_PROXIES_EXTRA:-}"
+REQUESTED_CADDY_SITE_ADDRESS="${CADDY_SITE_ADDRESS:-}"
 TARGET_CREDENTIALS_FILE="${TARGET_CREDENTIALS_FILE:-/root/nextcloud-credentials.txt}"
 
 if [[ $EUID -ne 0 ]]; then
@@ -96,6 +108,25 @@ url_host() {
   printf '%s\n' "$1" | sed -nE 's|^[A-Za-z][A-Za-z0-9+.-]*://([^/]+).*|\1|p'
 }
 
+append_unique_words() {
+  local result="$1"
+  shift
+  local word
+  for word in "$@"; do
+    [[ -z "$word" ]] && continue
+    if ! printf ' %s ' "$result" | grep -Fq " $word "; then
+      result="${result:+$result }$word"
+    fi
+  done
+  printf '%s' "$result"
+}
+
+repair_compose_for_reverse_proxy_env() {
+  [[ -f compose.yaml ]] || return 0
+  sed -i -E 's/(OVERWRITEHOST:[[:space:]]*)\$\{DOMAIN\}/\1${OVERWRITEHOST}/' compose.yaml
+  sed -i -E 's/(TRUSTED_PROXIES:[[:space:]]*)caddy/\1${TRUSTED_PROXIES}/' compose.yaml
+}
+
 upsert_env() {
   local file="$1"
   local key="$2"
@@ -152,6 +183,7 @@ write_credentials_file() {
 
   cat > "$TARGET_CREDENTIALS_FILE" <<EOF_CREDS
 Nextcloud URL: ${TARGET_CLI_URL}
+Local HTTP URL: http://${TARGET_DOMAIN}
 Install dir: ${INSTALL_DIR}
 
 Admin user: ${admin_user}
@@ -172,11 +204,12 @@ EOF_CREDS
 write_caddyfile() {
   local file="$1"
   local domain="$2"
-  local protocol="$3"
+  local local_http="$3"
+  local site_address="$4"
 
-  if [[ "$protocol" == "http" ]]; then
-    cat > "$file" <<'EOF_CADDY_HTTP'
-:80 {
+  if [[ "$local_http" == "1" ]]; then
+    cat > "$file" <<EOF_CADDY_HTTP
+${site_address:-:80} {
 	encode zstd gzip
 
 	redir /.well-known/carddav /remote.php/dav 301
@@ -187,7 +220,7 @@ write_caddyfile() {
 EOF_CADDY_HTTP
   else
     cat > "$file" <<EOF_CADDY_HTTPS
-${domain} {
+${site_address:-$domain} {
 	encode zstd gzip
 
 	redir /.well-known/carddav /remote.php/dav 301
@@ -205,52 +238,98 @@ EOF_CADDY_HTTPS
 
 detect_target_url_config() {
   # Precedence:
-  #   1. Explicit restore-time env overrides: DOMAIN / OVERWRITEPROTOCOL / OVERWRITECLIURL
+  #   1. Explicit restore-time env overrides
   #   2. Fresh target .env written by the installer
   #   3. Fresh target Nextcloud occ config, if app is running
-  #   4. Parsed values from the detected URL
-  #   5. Machine primary IPv4 + http fallback
+  #   4. Parsed public/overwrite URL values
+  #   5. Machine primary IPv4 + local HTTP fallback
 
-  local env_domain env_protocol env_cli_url
+  local env_domain env_local_http env_public_domain env_public_protocol env_public_url
+  local env_overwritehost env_protocol env_cli_url env_trusted_domains env_trusted_proxies env_caddy_site_address
   local occ_protocol occ_cli_url
-  local parsed_domain parsed_protocol
+  local parsed_public_domain parsed_public_protocol parsed_cli_domain parsed_cli_protocol
 
   env_domain="$(env_get .env DOMAIN)"
+  env_local_http="$(env_get .env LOCAL_HTTP)"
+  env_public_domain="$(env_get .env PUBLIC_DOMAIN)"
+  env_public_protocol="$(env_get .env PUBLIC_PROTOCOL)"
+  env_public_url="$(env_get .env PUBLIC_URL)"
+  env_overwritehost="$(env_get .env OVERWRITEHOST)"
   env_protocol="$(env_get .env OVERWRITEPROTOCOL)"
   env_cli_url="$(env_get .env OVERWRITECLIURL)"
+  env_trusted_domains="$(env_get .env NEXTCLOUD_TRUSTED_DOMAINS)"
+  env_trusted_proxies="$(env_get .env TRUSTED_PROXIES)"
+  env_caddy_site_address="$(env_get .env CADDY_SITE_ADDRESS)"
 
   occ_protocol="$(occ_get overwriteprotocol)"
   occ_cli_url="$(occ_get overwrite.cli.url)"
 
   TARGET_DOMAIN="${REQUESTED_DOMAIN:-$env_domain}"
-  TARGET_PROTOCOL="${REQUESTED_PROTOCOL:-$env_protocol}"
-  TARGET_CLI_URL="${REQUESTED_CLI_URL:-$env_cli_url}"
+  TARGET_DOMAIN="${TARGET_DOMAIN:-$(primary_ipv4)}"
 
-  if [[ -z "$TARGET_CLI_URL" && -n "$occ_cli_url" ]]; then
-    TARGET_CLI_URL="$occ_cli_url"
+  TARGET_LOCAL_HTTP="${REQUESTED_LOCAL_HTTP:-$env_local_http}"
+  TARGET_LOCAL_HTTP="${TARGET_LOCAL_HTTP:-0}"
+
+  TARGET_PUBLIC_DOMAIN="${REQUESTED_PUBLIC_DOMAIN:-$env_public_domain}"
+  TARGET_PUBLIC_PROTOCOL="${REQUESTED_PUBLIC_PROTOCOL:-$env_public_protocol}"
+  TARGET_PUBLIC_PROTOCOL="${TARGET_PUBLIC_PROTOCOL:-https}"
+  TARGET_PUBLIC_URL="${REQUESTED_PUBLIC_URL:-$env_public_url}"
+
+  if [[ -n "$TARGET_PUBLIC_URL" ]]; then
+    parsed_public_domain="$(url_host "$TARGET_PUBLIC_URL")"
+    parsed_public_protocol="$(url_scheme "$TARGET_PUBLIC_URL")"
+    TARGET_PUBLIC_DOMAIN="${TARGET_PUBLIC_DOMAIN:-$parsed_public_domain}"
+    TARGET_PUBLIC_PROTOCOL="${parsed_public_protocol:-$TARGET_PUBLIC_PROTOCOL}"
   fi
+
+  TARGET_OVERWRITEHOST="${REQUESTED_OVERWRITEHOST:-$env_overwritehost}"
+  TARGET_OVERWRITEHOST="${TARGET_OVERWRITEHOST:-${TARGET_PUBLIC_DOMAIN:-$TARGET_DOMAIN}}"
+
+  TARGET_PROTOCOL="${REQUESTED_PROTOCOL:-$env_protocol}"
   if [[ -z "$TARGET_PROTOCOL" && -n "$occ_protocol" ]]; then
     TARGET_PROTOCOL="$occ_protocol"
   fi
-
-  if [[ -n "$TARGET_CLI_URL" ]]; then
-    parsed_domain="$(url_host "$TARGET_CLI_URL")"
-    parsed_protocol="$(url_scheme "$TARGET_CLI_URL")"
-    TARGET_DOMAIN="${TARGET_DOMAIN:-$parsed_domain}"
-    TARGET_PROTOCOL="${TARGET_PROTOCOL:-$parsed_protocol}"
+  if [[ -z "$TARGET_PROTOCOL" ]]; then
+    if [[ -n "$TARGET_PUBLIC_DOMAIN" || -n "$TARGET_PUBLIC_URL" ]]; then
+      TARGET_PROTOCOL="$TARGET_PUBLIC_PROTOCOL"
+    elif [[ "$TARGET_LOCAL_HTTP" == "1" ]]; then
+      TARGET_PROTOCOL="http"
+    else
+      TARGET_PROTOCOL="https"
+    fi
   fi
 
-  TARGET_DOMAIN="${TARGET_DOMAIN:-$(primary_ipv4)}"
-  TARGET_PROTOCOL="${TARGET_PROTOCOL:-http}"
-
-  if [[ -z "$TARGET_CLI_URL" ]]; then
-    TARGET_CLI_URL="${TARGET_PROTOCOL}://${TARGET_DOMAIN}"
+  TARGET_CLI_URL="${REQUESTED_CLI_URL:-$env_cli_url}"
+  if [[ -z "$TARGET_CLI_URL" && -n "$TARGET_PUBLIC_URL" ]]; then
+    TARGET_CLI_URL="$TARGET_PUBLIC_URL"
+  fi
+  if [[ -z "$TARGET_CLI_URL" && -n "$occ_cli_url" ]]; then
+    TARGET_CLI_URL="$occ_cli_url"
+  fi
+  if [[ -z "$TARGET_CLI_URL" || -n "$REQUESTED_DOMAIN" || -n "$REQUESTED_PUBLIC_DOMAIN" || -n "$REQUESTED_PUBLIC_URL" || -n "$REQUESTED_PROTOCOL" || -n "$REQUESTED_OVERWRITEHOST" ]]; then
+    TARGET_CLI_URL="${TARGET_PROTOCOL}://${TARGET_OVERWRITEHOST}"
   fi
 
-  # If DOMAIN or protocol were explicitly overridden but CLI URL was not,
-  # rebuild the CLI URL so it matches the override.
-  if [[ -z "$REQUESTED_CLI_URL" && ( -n "$REQUESTED_DOMAIN" || -n "$REQUESTED_PROTOCOL" ) ]]; then
-    TARGET_CLI_URL="${TARGET_PROTOCOL}://${TARGET_DOMAIN}"
+  parsed_cli_domain="$(url_host "$TARGET_CLI_URL")"
+  parsed_cli_protocol="$(url_scheme "$TARGET_CLI_URL")"
+  TARGET_OVERWRITEHOST="${TARGET_OVERWRITEHOST:-$parsed_cli_domain}"
+  TARGET_PROTOCOL="${TARGET_PROTOCOL:-$parsed_cli_protocol}"
+
+  TARGET_TRUSTED_DOMAINS="${REQUESTED_TRUSTED_DOMAINS:-$env_trusted_domains}"
+  TARGET_TRUSTED_DOMAINS="${TARGET_TRUSTED_DOMAINS:-$TARGET_DOMAIN}"
+  TARGET_TRUSTED_DOMAINS="$(append_unique_words "$TARGET_TRUSTED_DOMAINS" "$TARGET_OVERWRITEHOST" "$TARGET_PUBLIC_DOMAIN" "$parsed_cli_domain")"
+
+  TARGET_TRUSTED_PROXIES="${REQUESTED_TRUSTED_PROXIES:-$env_trusted_proxies}"
+  TARGET_TRUSTED_PROXIES="${TARGET_TRUSTED_PROXIES:-caddy}"
+  TARGET_TRUSTED_PROXIES="$(append_unique_words "$TARGET_TRUSTED_PROXIES" $REQUESTED_TRUSTED_PROXIES_EXTRA)"
+
+  TARGET_CADDY_SITE_ADDRESS="${REQUESTED_CADDY_SITE_ADDRESS:-$env_caddy_site_address}"
+  if [[ -z "$TARGET_CADDY_SITE_ADDRESS" ]]; then
+    if [[ "$TARGET_LOCAL_HTTP" == "1" ]]; then
+      TARGET_CADDY_SITE_ADDRESS=":80"
+    else
+      TARGET_CADDY_SITE_ADDRESS="$TARGET_DOMAIN"
+    fi
   fi
 
   if [[ -z "$TARGET_DOMAIN" ]]; then
@@ -294,9 +373,13 @@ fi
 cat <<EOF_WARN
 About to overwrite this Nextcloud deployment:
   Install dir: $INSTALL_DIR
-  Preserved target domain: $TARGET_DOMAIN
-  Preserved target protocol: $TARGET_PROTOCOL
-  Preserved target URL: $TARGET_CLI_URL
+  Preserved local domain: $TARGET_DOMAIN
+  Preserved local HTTP mode: $TARGET_LOCAL_HTTP
+  Preserved public/canonical host: $TARGET_OVERWRITEHOST
+  Preserved public/canonical protocol: $TARGET_PROTOCOL
+  Preserved public/canonical URL: $TARGET_CLI_URL
+  Preserved trusted domains: $TARGET_TRUSTED_DOMAINS
+  Preserved trusted proxies: $TARGET_TRUSTED_PROXIES
 
 EOF_WARN
 
@@ -334,13 +417,21 @@ if [[ ! -f .env ]]; then
 fi
 
 # Keep restored DB/app secrets, but replace network identity with the fresh target's values.
+repair_compose_for_reverse_proxy_env
 upsert_env .env DOMAIN "$TARGET_DOMAIN"
-upsert_env .env NEXTCLOUD_TRUSTED_DOMAINS "$TARGET_DOMAIN"
+upsert_env .env LOCAL_HTTP "$TARGET_LOCAL_HTTP"
+upsert_env .env PUBLIC_DOMAIN "$TARGET_PUBLIC_DOMAIN"
+upsert_env .env PUBLIC_PROTOCOL "$TARGET_PUBLIC_PROTOCOL"
+upsert_env .env PUBLIC_URL "$TARGET_PUBLIC_URL"
+upsert_env .env NEXTCLOUD_TRUSTED_DOMAINS "$TARGET_TRUSTED_DOMAINS"
+upsert_env .env TRUSTED_PROXIES "$TARGET_TRUSTED_PROXIES"
+upsert_env .env OVERWRITEHOST "$TARGET_OVERWRITEHOST"
 upsert_env .env OVERWRITEPROTOCOL "$TARGET_PROTOCOL"
 upsert_env .env OVERWRITECLIURL "$TARGET_CLI_URL"
+upsert_env .env CADDY_SITE_ADDRESS "$TARGET_CADDY_SITE_ADDRESS"
 chmod 600 .env
 
-write_caddyfile Caddyfile "$TARGET_DOMAIN" "$TARGET_PROTOCOL"
+write_caddyfile Caddyfile "$TARGET_DOMAIN" "$TARGET_LOCAL_HTTP" "$TARGET_CADDY_SITE_ADDRESS"
 
 # Reload restored .env so Compose initializes MariaDB with the restored credentials.
 load_env_file ./.env
@@ -388,14 +479,27 @@ for i in {1..120}; do
 done
 
 echo "Reapplying target domain settings inside Nextcloud..."
-docker compose exec -T -u www-data app php occ config:system:set trusted_domains 0 --value="$TARGET_DOMAIN" >/dev/null || true
-for i in {1..20}; do
+idx=0
+for domain in $TARGET_TRUSTED_DOMAINS; do
+  docker compose exec -T -u www-data app php occ config:system:set trusted_domains "$idx" --value="$domain" >/dev/null || true
+  idx=$((idx + 1))
+done
+for i in $(seq "$idx" 20); do
   docker compose exec -T -u www-data app php occ config:system:delete trusted_domains "$i" >/dev/null 2>&1 || true
 done
-docker compose exec -T -u www-data app php occ config:system:set overwritehost --value="$TARGET_DOMAIN" >/dev/null || true
+
+docker compose exec -T -u www-data app php occ config:system:set overwritehost --value="$TARGET_OVERWRITEHOST" >/dev/null || true
 docker compose exec -T -u www-data app php occ config:system:set overwriteprotocol --value="$TARGET_PROTOCOL" >/dev/null || true
 docker compose exec -T -u www-data app php occ config:system:set overwrite.cli.url --value="$TARGET_CLI_URL" >/dev/null || true
-docker compose exec -T -u www-data app php occ config:system:set trusted_proxies 0 --value="caddy" >/dev/null || true
+
+idx=0
+for proxy in $TARGET_TRUSTED_PROXIES; do
+  docker compose exec -T -u www-data app php occ config:system:set trusted_proxies "$idx" --value="$proxy" >/dev/null || true
+  idx=$((idx + 1))
+done
+for i in $(seq "$idx" 20); do
+  docker compose exec -T -u www-data app php occ config:system:delete trusted_proxies "$i" >/dev/null 2>&1 || true
+done
 
 docker compose exec -T -u www-data app php occ maintenance:mode --off >/dev/null || true
 docker compose exec -T -u www-data app php occ maintenance:update:htaccess >/dev/null || true

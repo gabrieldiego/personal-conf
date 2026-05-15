@@ -10,6 +10,8 @@ set -Eeuo pipefail
 #   REMOVE_IMAGES=1
 #   CLOSE_FIREWALL=1
 #   PURGE_DOCKER=1
+#   REMOVE_TUNNEL_SERVICE=1
+#   TUNNEL_SERVICE_NAME=nextcloud-reverse-tunnel.service
 #
 # Notes:
 #   - This is destructive.
@@ -22,6 +24,8 @@ YES="${YES:-0}"
 REMOVE_IMAGES="${REMOVE_IMAGES:-0}"
 CLOSE_FIREWALL="${CLOSE_FIREWALL:-0}"
 PURGE_DOCKER="${PURGE_DOCKER:-0}"
+REMOVE_TUNNEL_SERVICE="${REMOVE_TUNNEL_SERVICE:-0}"
+TUNNEL_SERVICE_NAME="${TUNNEL_SERVICE_NAME:-nextcloud-reverse-tunnel.service}"
 
 CONTAINERS=(
   nextcloud-app
@@ -49,6 +53,8 @@ echo "Install dir:       $INSTALL_DIR"
 echo "Remove images:     $REMOVE_IMAGES"
 echo "Close firewall:    $CLOSE_FIREWALL"
 echo "Purge Docker:      $PURGE_DOCKER"
+echo "Remove tunnel svc: $REMOVE_TUNNEL_SERVICE"
+echo "Tunnel service:    $TUNNEL_SERVICE_NAME"
 echo
 
 if [[ "$PURGE_DOCKER" == "1" ]]; then
@@ -63,6 +69,13 @@ if [[ "$YES" != "1" ]]; then
     echo "Aborted."
     exit 1
   fi
+fi
+
+if [[ "$REMOVE_TUNNEL_SERVICE" == "1" ]]; then
+  echo "Stopping and removing reverse SSH tunnel service if present..."
+  systemctl disable --now "$TUNNEL_SERVICE_NAME" >/dev/null 2>&1 || true
+  rm -f "/etc/systemd/system/${TUNNEL_SERVICE_NAME}"
+  systemctl daemon-reload >/dev/null 2>&1 || true
 fi
 
 echo "Stopping compose stack if present..."
@@ -160,3 +173,4 @@ echo "Nextcloud uninstall completed."
 echo
 echo "For a fresh install, run something like:"
 echo "  sudo DOMAIN=192.168.50.113 LOCAL_HTTP=1 ./install-nextcloud.sh"
+echo "  sudo DOMAIN=192.168.50.55 LOCAL_HTTP=1 PUBLIC_DOMAIN=nc.gt8projects.com PUBLIC_PROTOCOL=https ./install-nextcloud.sh"
